@@ -23,6 +23,7 @@ using CustomKillCallback = System.Action<UnityEngine.Component>;
 using CustomUpdateCallback = System.Action<UnityEngine.Component, Newtonsoft.Json.Linq.JObject>;
 using CustomAddDisplayInfoCallback = System.Action<UnityEngine.Component, Newtonsoft.Json.Linq.JObject, System.Text.StringBuilder>;
 using CustomSetDataCallback = System.Action<UnityEngine.Component, object>;
+using System.Text.RegularExpressions;
 
 namespace Oxide.Plugins
 {
@@ -4390,6 +4391,117 @@ namespace Oxide.Plugins
 
                     // Disallow extinguishing.
                     candle.SetFlag(BaseEntity.Flags.Busy, true);
+                }
+
+                var fogMachine = Entity as FogMachine;
+                if (fogMachine != null)
+                {
+                    fogMachine.SetFlag(BaseEntity.Flags.On, true);
+                    fogMachine.InvokeRepeating(() => 
+                    {
+                        fogMachine.SetFlag(FogMachine.Emitting, true);
+                        fogMachine.Invoke(fogMachine.EnableFogField, 1f);
+                        fogMachine.Invoke(fogMachine.DisableNozzle, fogMachine.nozzleBlastDuration);
+                        fogMachine.Invoke(fogMachine.FinishFogging, fogMachine.fogLength);
+                    }, 
+                    UnityEngine.Random.Range(0f, 5f), 
+                    fogMachine.fogLength - 1);
+
+                    // Disallow interaction.
+                    fogMachine.SetFlag(BaseEntity.Flags.Busy, true);
+                }
+
+                var oven = Entity as BaseOven;
+                if (oven != null) 
+                {
+                    // Lanterns
+                    if (oven is BaseFuelLightSource)
+                    {
+                        oven.SetFlag(BaseEntity.Flags.On, true);
+                        oven.SetFlag(BaseEntity.Flags.Busy, true);
+                    }
+
+                    // jackolantern.angry or jackolantern.happy
+                    else if (oven.prefabID == 1889323056 || oven.prefabID == 630866573)
+                    {
+                        oven.SetFlag(BaseEntity.Flags.On, true);
+                        oven.SetFlag(BaseEntity.Flags.Busy, true);
+                    }
+                }
+
+                var spooker = Entity as SpookySpeaker;
+                if (spooker != null)
+                {
+                    spooker.SetFlag(BaseEntity.Flags.On, true);
+                    spooker.InvokeRandomized(
+                        spooker.SendPlaySound,
+                        spooker.soundSpacing,
+                        spooker.soundSpacing,
+                        spooker.soundSpacingRand);
+
+                    spooker.SetFlag(BaseEntity.Flags.Busy, true);
+                }
+
+                var telephone = Entity as Telephone;
+                if (telephone != null && telephone.prefabID == 1009655496)
+                {
+                    string phoneName = null;
+                    var gridCoodr = PhoneController.PositionToGridCoord(telephone.Controller.baseEntity.transform.position);
+
+                    var monumentInfo = Monument.Object as MonumentInfo;
+                    if (monumentInfo != null && !string.IsNullOrEmpty(monumentInfo.displayPhrase.translated))
+                    {
+                        phoneName = monumentInfo.displayPhrase.translated;
+
+                        var monuments = PluginInstance.FindMonumentsByShortName(Monument.ShortName);
+                        if (monuments != null && monuments.Count > 1)
+                        {
+                            phoneName += " " + gridCoodr;
+                        }
+                    }
+
+                    var dungeonGridCell = Monument.Object as DungeonGridCell;
+                    if (dungeonGridCell != null)
+                    {
+                        phoneName = "FTL " + Regex.Replace(Monument.AliasOrShortName, "([a-z])([A-Z])", "$1 $2");
+                        phoneName += " " + gridCoodr;
+                    }
+
+                    var dungeonBaseLink = Monument.Object as DungeonBaseLink;
+                    if (dungeonBaseLink != null)
+                    {
+                        var roomName = "";
+                        for (int i = 0; i < dungeonBaseLink.Dungeon.Floors.Count; i++)
+                        {
+                            if (dungeonBaseLink.Dungeon.Floors[i].Links.Contains(dungeonBaseLink))
+                            {
+                                roomName = " L" + (i + 1) + " " + dungeonBaseLink.Type.ToString() + " " + dungeonBaseLink.Dungeon.Floors[i].Links.IndexOf(dungeonBaseLink);
+                                break;
+                            }
+                        }
+
+                        phoneName = "Underwater Lab " + gridCoodr + roomName;
+                    }
+
+                    var dynamicMonument = Monument as DynamicMonument;
+                    if (dynamicMonument != null)
+                    {
+                        if (dynamicMonument.RootEntity.ShortPrefabName == "cargoshiptest")
+                        {
+                            phoneName = "Cargo Ship " + dynamicMonument.EntityId;
+                        }
+                        else 
+                        {
+                            phoneName = telephone.GetDisplayName() + " " + dynamicMonument.EntityId;
+                        }
+                    }
+
+                    if (phoneName != null)
+                        telephone.Controller.PhoneName = phoneName;
+                    else 
+                        telephone.Controller.PhoneName = telephone.GetDisplayName() + " " + gridCoodr;
+
+                    TelephoneManager.RegisterTelephone(telephone.Controller);
                 }
 
                 if (EntityData.Scale != 1 || Entity.GetParentEntity() is SphereEntity)
